@@ -57,6 +57,7 @@ void dcn_v2_cuda_forward(cudaStream_t stream, cublasHandle_t handle,
     const int height_out = (height + 2 * pad_h - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
     const int width_out = (width + 2 * pad_w - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
+
     //if (THCudaTensor_nDimension(state, ones) != 2 ||
     //    THCudaTensor_size(state, ones, 0) * THCudaTensor_size(state, ones, 1) < height_out * width_out)
     //{
@@ -150,7 +151,7 @@ void dcn_v2_cuda_forward(cudaStream_t stream, cublasHandle_t handle,
         input_n += channels * height * width;
         offset_n += height_out * width_out * deformable_group * kernel_h * kernel_w * 2;
         mask_n += height_out * width_out * deformable_group * kernel_h * kernel_w;
-        output_n += ldc;
+        output_n += m*n;
     }
 }
 
