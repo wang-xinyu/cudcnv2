@@ -20,7 +20,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Ofast -Wfatal-errors -
 
 cuda_add_library(im2col ${PROJECT_SOURCE_DIR}/cuda/dcn_v2_im2col_cuda.cu)
 
-add_executable(app ${PROJECT_SOURCE_DIR}/dcn_v2_cuda.c ${PROJECT_SOURCE_DIR}/main.cpp)
+add_executable(app ${PROJECT_SOURCE_DIR}/cudcnv2.cpp ${PROJECT_SOURCE_DIR}/main.cpp)
 target_link_libraries(app cudart cublas)
 target_link_libraries(app im2col)
 

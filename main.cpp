@@ -1,17 +1,20 @@
-#include "dcn_v2_cuda.h"
+#include "cudcnv2.h"
+#include <map>
+#include <iostream>
+#include <fstream>
 
 class Weights
 {
     public:
-        const float* cpu_values; //!< The weight values, in a contiguous array.
-        void *gpu_values
-        int64_t count;      //!< The number of weights in the array.
+        float *values_cpu; //!< The weight values, in a contiguous array.
+        float *values_gpu;
+        int count;      //!< The number of weights in the array.
 };
 
 // Load weights from files.
 // weight files have a simple space delimited format:
 // [type] [size] <data x size in hex>
-std::map<std::string, Weights> loadWeights(onst std::string file)
+std::map<std::string, Weights> loadWeights(std::string file)
 {
     std::cout << "Loading weights: " << file << std::endl;
     std::map<std::string, Weights> weightMap;
@@ -38,9 +41,9 @@ std::map<std::string, Weights> loadWeights(onst std::string file)
         {
             input >> std::hex >> val[x];
         }
-        wt.cpu_values = val;
-        cudaMalloc(&wt.gpu_values, size * sizeof(float));
-        cudaMemcpy(wt.gpu_values, wt.cpu_values, size * sizeof(float), cudaMemcpyHostToDevice);
+        wt.values_cpu = (float*)val;
+        cudaMalloc(&wt.values_gpu, size * sizeof(float));
+        cudaMemcpy(wt.values_gpu, wt.values_cpu, size * sizeof(float), cudaMemcpyHostToDevice);
 
         wt.count = size;
         weightMap[name] = wt;
@@ -55,50 +58,36 @@ int main() {
     cudaStreamCreate(&stream);
     cublasHandle_t handle;
     cublasCreate(&handle);
+    cublasSetStream(handle, stream);
 
     std::map<std::string, Weights> weightMap = loadWeights("../dcnv2.wts");
 
+    CuDcnv2 *dcn = new CuDcnv2(64, 64, 3, 3, 1, 1, 1, 1, 1, 1, 1, weightMap["dcnv2.weight"].values_cpu, weightMap["dcnv2.bias"].values_cpu);
+
     int input_dims[4] = {1, 64, 128, 128};
+    float *output_gpu;
+    int output_size;
 
-    int kernel_h = 3;
-    int kernel_w = 3;
-    int pad_h = 1;
-    int pad_w = 1;
-    int dilation_h = 1;
-    int dilation_w = 1;
-    int deformable_group = 1;
-    int channels_out = 64;
+    dcn->forward_gpu(stream, handle, weightMap["input"].values_gpu, input_dims, weightMap["offset"].values_gpu, weightMap["mask"].values_gpu, &output_gpu, &output_size);
 
-    int height_out = (input_dims[2] + 2 * pad_h - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
-    int width_out = (input_dims[3] + 2 * pad_w - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
-
-    float *cpu_ones = new float[height_out * width_out];
-    void *ones;
-    cudaMalloc(&ones, height_out * width_out * sizeof(float));
-    cudaMemcpy(ones, cpu_ones, height_out * width_out * sizeof(float), cudaMemcpyHostToDevice);
-
-    void *columns;
-    cudaMalloc(&columns * sizeof(float));
-
-    dcn_v2_cuda_forward(stream, handle,
-            weightMap["input"], input_dims,
-            weightMap["dcnv2.weight"],
-            weightMap["dcnv2.bias"], (float *)ones,
-            weightMap["offset"], weightMap["mask"],
-            float *output, float *columns,
-            channels_out,
-            kernel_h, kernel_w,
-            stride_h, stride_w,
-            pad_h, pad_w,
-            dilation_h, dilation_w,
-            deformable_group);
+    float *output_cpu = new float[output_size];
+    cudaMemcpy(output_cpu, output_gpu, output_size * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "\nOutput:\n\n";
+    for (int i = 0; i < output_size; i++) {
+        std::cout << output_cpu[i] << ", ";
+        if (i % 10 == 0) std::cout << i / 10 << std::endl;
+    }
+    std::cout << std::endl;
 
     for (auto& mem : weightMap)
     {
-        free((void*) (mem.second.cpu_values));
-        cudaFree(mem.second.gpu_values);
+        free((void*) (mem.second.values_cpu));
+        cudaFree(mem.second.values_gpu);
     }
-
+    cudaFree(output_gpu);
+    delete[] output_cpu;
+    cublasDestroy(handle);
+    cudaStreamDestroy(stream);
 
     return 0;
 }
